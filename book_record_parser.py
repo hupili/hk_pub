@@ -4,7 +4,6 @@ DEBUG = True
 DASH = '—'
 SLASH = '/'
 
-
 def is_Chi_char(char):
     return '\u4e00' <= char <= '\u9fff'
 
@@ -13,15 +12,24 @@ def clean_string(seg):
     if not seg:
         return ''
 
+    PERIOD_WHITELIST = ('ed.',
+                        'pbk.',
+                        'cm.'
+                        )
+
     result = seg.replace('\n', ' ')
 
+    # Delete trailing spaces and periods.
+
+    keep_trailing_symbol = False
     while result and ((result[-1] == ' ') or (result[-1] == '.')):
-        try:
-            if result[-3:] == 'ed.':
-                break
-        except IndexError:
-            pass
-        result = result[:-1]
+        for s in PERIOD_WHITELIST:
+            if result.endswith(s):
+                keep_trailing_symbol = True
+        if keep_trailing_symbol:
+            break
+        else:
+            result = result[:-1]
 
     while result and result[0] == ' ':
         result = result[1:]
@@ -88,6 +96,36 @@ def has_detailed_edition_info(s):
             return True
     return False
 
+def parse_ISBN(s):
+    """
+    Parse a string in the form of "ISBN 978-1-4058-6246-2 (pbk.) : Unpriced"
+    Return a dictionary, in the form of
+    {'ISBN': '978-1-4058-6246-2',
+     'medium': 'pbk.',
+     'price': 'Unpriced',}
+    :param s:
+    :return:
+    """
+    if '(' in s:
+        pos_left = s.find('(')
+        pos_right = s.find(')')
+        medium = s[pos_left+1:pos_right]
+        s = s[:pos_left] + s[pos_right+1:]
+    else:
+        medium = ''
+
+    try:
+        s1, s2 = s.rsplit(':', maxsplit=1)
+    except ValueError:
+        s1, s2 = s.rsplit('$', maxsplit=1)
+
+    ISBN = s1[5:]
+    price = s2
+
+    return {'ISBN': ISBN,
+            'medium': medium,
+            'price': price}
+
 
 def parse_publication_entry(entry):
     segs = entry.split(DASH)
@@ -139,20 +177,48 @@ def parse_publication_entry(entry):
         serial_marker = '(2008'
         ISBN_marker = 'ISBN'
         if ISBN_marker in segs[2]:
-            publishing_segment = segs[2][:segs[2].find(ISBN_marker)]
+            format_segment = segs[2][:segs[2].find(ISBN_marker)]
             reminder = segs[2][segs[2].find(ISBN_marker):]
             ISBN_segment = reminder[:reminder.find(serial_marker)]
             serial_segment = reminder[reminder.find(serial_marker):]
         else:  # No ISBN
             ISBN_segment = ''
-            publishing_segment =segs[2][:segs[2].find(serial_marker)]
+            format_segment =segs[2][:segs[2].find(serial_marker)]
             serial_segment = segs[2][segs[2].find(serial_marker):]
 
-        result['format'] = publishing_segment
+        if ISBN_segment.count('ISBN') == 2:
+            pos_ISBN_1 = ISBN_segment.find('ISBN')
+            pos_lineend_1 = ISBN_segment.find('\n', pos_ISBN_1)
+            pos_ISBN_2 = ISBN_segment.find('ISBN', pos_ISBN_1+1)
+            pos_lineend_2 = ISBN_segment.find('\n', pos_ISBN_2)
+            info1 = parse_ISBN(ISBN_segment[pos_ISBN_1:pos_lineend_1])
+            info2 = parse_ISBN(ISBN_segment[pos_ISBN_2:pos_lineend_2])
 
-        result['ISBN'] = ISBN_segment
+            result['ISBN_1'] = info1['ISBN']
+            result['medium_1'] = info1['medium']
+            result['price_1'] = info1['price']
+
+            result['ISBN_2'] = info2['ISBN']
+            result['medium_2'] = info2['medium']
+            result['price_2'] = info2['price']
+
+        if (len(serial_segment) > len('(xxxx-yyyyy)\n')) and ('\n' in serial_segment):
+            serial_segment = serial_segment.split('\n', maxsplit=1)[0]
+            # Remove garbage from PDF headers
+
+        if 'cm.' in format_segment:
+            format_segment, detail_info = format_segment.split('cm.')
+            format_segment = format_segment + 'cm.'
+        else:
+            detail_info = ''
+
+        result['format'] = format_segment
 
         result['serial'] = serial_segment
+
+        result['details'] = detail_info
+
+
 
     for key in result:
         result[key] = clean_string(result[key])
@@ -161,6 +227,9 @@ def parse_publication_entry(entry):
         for key in result:
             print(key + '=' + result[key])
         print('\n')
+
+    if not DEBUG:
+        result['original_record'] = entry
 
     return result
 
@@ -181,7 +250,7 @@ if __name__ == '__main__':
     upper = 2818
     if DEBUG:
         lower = 1
-        upper = 1
+        upper = 100
 
     begin, end = 0, 0
     for rank in range(lower, upper + 1):
@@ -206,10 +275,12 @@ if __name__ == '__main__':
                       'author',
                       'detailed_authorship',
                       'publisher',
-                      'ISBN',
-                      'ISBN_audio',
-                      'price',
-                      'price_audio',
+                      'ISBN_1',
+                      'medium_1',
+                      'price_1',
+                      'ISBN_2',
+                      'medium_2',
+                      'price_2',
                       'location_of_publication',
                       'year_of_publication',
                       'format',
