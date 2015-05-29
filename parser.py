@@ -15,7 +15,7 @@ def clean_string(seg):
 
     result = seg.replace('\n', ' ')
 
-    while (result[-1] == ' ') or (result[-1] == '.'):
+    while result and ((result[-1] == ' ') or (result[-1] == '.')):
         try:
             if result[-3:] == 'ed.':
                 break
@@ -23,7 +23,7 @@ def clean_string(seg):
             pass
         result = result[:-1]
 
-    while result[0] == ' ':
+    while result and result[0] == ' ':
         result = result[1:]
 
     if (len(result) == 5) and result[0] == 'c':
@@ -34,7 +34,7 @@ def clean_string(seg):
             pass
             # Clean string like "c2008"
 
-    if (result[0] == '[') and (result[-1] == ']') and (len(result) == 6):
+    if result and (result[0] == '[') and (result[-1] == ']') and (len(result) == 6):
         try:
             int(result[1:-1])
             result = result[1:-1]
@@ -42,13 +42,18 @@ def clean_string(seg):
             pass
             # Clean string like "[2008]"
 
+    # Delete spaces around Chinese characters
     try:
         for i in range(1, len(result) - 1):
             char, char_before, char_after = result[i], result[i - 1], result[i + 1]
-            if char == ' ' and is_Chi_char(char_before) and is_Chi_char(char_after):
+            if char == ' ' and (is_Chi_char(char_before) or is_Chi_char(char_after)):
                 result = result[:i] + result[i + 1:]
     except IndexError:
         pass
+
+    if len(result) >= 3:
+        if (result[0] == '(') and (result[-1] == ')'):
+            result = result[1:-1]
 
     return result
 
@@ -76,7 +81,7 @@ def has_detailed_edition_info(s):
                 'edition',
                 '12.2007',
                 'version',
-                'Vol.'
+                'Vol.',
                 )
     for kw in keywords:
         if kw in s:
@@ -116,7 +121,6 @@ def parse_publication_entry(entry):
             # "2nd ed.' or 'New ed.', et cetera.
             result['edition'] = clean_string(segs[1])
             segs[1:-1] = segs[2:-1]
-            del segs[-1]
 
         if '=' in title_segment:
             # bilingual title
@@ -132,15 +136,23 @@ def parse_publication_entry(entry):
         result['publisher'] = s2
         result['year_of_publication'] = s3
 
-        ISBN_marker = 'ISBN'
         serial_marker = '(2008'
-        publishing_segment = segs[2][:segs[2].find(ISBN_marker)]
-        reminder = segs[2][segs[2].find(ISBN_marker):]
-        ISBN_segment = reminder[:reminder.find(serial_marker)]
-        serial_segment = reminder[reminder.find(serial_marker):]
-        print('=======\n')
-        print(publishing_segment, ISBN_segment, serial_segment)
-        print('=======\n')
+        ISBN_marker = 'ISBN'
+        if ISBN_marker in segs[2]:
+            publishing_segment = segs[2][:segs[2].find(ISBN_marker)]
+            reminder = segs[2][segs[2].find(ISBN_marker):]
+            ISBN_segment = reminder[:reminder.find(serial_marker)]
+            serial_segment = reminder[reminder.find(serial_marker):]
+        else:  # No ISBN
+            ISBN_segment = ''
+            publishing_segment =segs[2][:segs[2].find(serial_marker)]
+            serial_segment = segs[2][segs[2].find(serial_marker):]
+
+        result['format'] = publishing_segment
+
+        result['ISBN'] = ISBN_segment
+
+        result['serial'] = serial_segment
 
     for key in result:
         result[key] = clean_string(result[key])
@@ -169,7 +181,7 @@ if __name__ == '__main__':
     upper = 2818
     if DEBUG:
         lower = 1
-        upper = 1000
+        upper = 1
 
     begin, end = 0, 0
     for rank in range(lower, upper + 1):
@@ -178,10 +190,7 @@ if __name__ == '__main__':
         offset = len(str(rank))
         entry_in_txt = txt[begin + offset:end]
 
-        try:
-            record = parse_publication_entry(entry_in_txt)
-        except (IndexError, ValueError):
-            record = {'original_record': entry_in_txt}
+        record = parse_publication_entry(entry_in_txt)
         records.append(record)
 
     prefix = ''
@@ -191,8 +200,9 @@ if __name__ == '__main__':
         prefix = 'debug' + str(random.randint(1, 1000)) + '_'
 
     with open(prefix + '2008.csv', 'w', newline='') as csvfile:
-        fieldnames = ['title_chi',
+        fieldnames = ['serial',
                       'title_eng',
+                      'title_chi',
                       'author',
                       'detailed_authorship',
                       'publisher',
@@ -205,7 +215,6 @@ if __name__ == '__main__':
                       'format',
                       'details',
                       'original_record',
-                      'serial',
                       'edition',
                       ]
         writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=fieldnames)
