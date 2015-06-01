@@ -4,10 +4,32 @@ DEBUG = True
 DASH = '—'
 SLASH = '/'
 
-currencies = ('$', 'CNY', 'USD', 'GBP')
+currencies = ('$', 'CNY', 'USD', 'GBP', 'NTD')
 
 def is_Chi_char(char):
     return '\u4e00' <= char <= '\u9fff'
+
+def is_encapsulated_in_brackets(s):
+    try:
+        return (s[0] == '(') and (s[-1] == ')')
+    except IndexError:
+        return False
+
+def is_description(s):
+    common_descriptions = ('附唯讀記憶光碟1隻',
+                           '內容以簡體字排版',
+                           '中英對照',
+                           '中文內容以簡體字排版',
+                           '部分內容以英文排版',
+                           '附鐳射光碟1隻',
+                           )
+    common_description_keywords = ('對照',
+                                   '附')
+
+    for kw in common_description_keywords:
+        if kw in s:
+            return True
+    return s in common_descriptions
 
 
 def clean_string(seg):
@@ -109,7 +131,7 @@ def has_author_info(s):
     return False
 
 
-def parse_ISBN(s):
+def parse_ISBN_line(s):
     """
     Parse a string in the form of "ISBN 978-1-4058-6246-2 (pbk.) : Unpriced"
     Return a dictionary, in the form of
@@ -120,6 +142,15 @@ def parse_ISBN(s):
     :param s:
     :return:
     """
+
+    # For lines like $35.00, with no ISBN information
+    if (s[0] == '$') and (s[1:].isdigit()):
+        return {'ISBN': '',
+                'medium': '',
+                'price': s[1:],
+                'price_currency': '$',
+                }
+
     if '(' in s:
         pos_left = s.find('(')
         pos_right = s.find(')')
@@ -137,7 +168,8 @@ def parse_ISBN(s):
 
     if ':' not in s:
         s = s.replace('  ', ':')
-        s = s.replace(' $', ':$')
+        if ':' not in s:
+            s = s.replace(' $', ':$')
 
     ISBN_part, price_part = s.split(':')
     ISBN = ISBN_part.replace('ISBN ', '')
@@ -174,13 +206,38 @@ def parse_publication_entry(entry):
         serial_segment = segs[-1]
         result['serial'] = serial_segment[1:-1]
 
-        ISBN_segment = segs[-2]
+        double_ISBN = entry.count("ISBN") == 2
+
         if 'ISBN' in segs[-2]:
-            isbn_info = parse_ISBN(ISBN_segment)
+            ISBN_segment = segs[-2]
+            isbn_info = parse_ISBN_line(ISBN_segment)
             result['ISBN_1'] = isbn_info['ISBN']
             result['medium_1'] = isbn_info['medium']
             result['price_1'] = isbn_info['price']
             result['price_1_currency'] = isbn_info['price_currency']
+
+            if double_ISBN:
+                ISBN_segment = segs[-3]
+                isbn_info = parse_ISBN_line(ISBN_segment)
+                result['ISBN_2'] = isbn_info['ISBN']
+                result['medium_2'] = isbn_info['medium']
+                result['price_2'] = isbn_info['price']
+                result['price_2_currency'] = isbn_info['price_currency']
+                del segs[-3]
+
+        else:
+            segs.insert(-1, 'ISBN filler item')
+
+        if (")" in segs[-3]) and not ('(' in segs[-3]):
+            # Second line of a two-line stories
+            segs[-3] = segs[-4].replace('\n', '') + segs[-3]
+            del segs[-4]
+
+        if (is_description(segs[-3])) or (is_encapsulated_in_brackets(segs[-3])):
+            result['details'] = segs[-3]
+            del segs[-3]
+        else:
+            result['format'] = segs[-3]
 
     else:  # English publication
 
@@ -237,8 +294,8 @@ def parse_publication_entry(entry):
             pos_lineend_1 = ISBN_segment.find('\n', pos_ISBN_1)
             pos_ISBN_2 = ISBN_segment.find('ISBN', pos_ISBN_1+1)
             pos_lineend_2 = ISBN_segment.find('\n', pos_ISBN_2)
-            info1 = parse_ISBN(ISBN_segment[pos_ISBN_1:pos_lineend_1])
-            info2 = parse_ISBN(ISBN_segment[pos_ISBN_2:pos_lineend_2])
+            info1 = parse_ISBN_line(ISBN_segment[pos_ISBN_1:pos_lineend_1])
+            info2 = parse_ISBN_line(ISBN_segment[pos_ISBN_2:pos_lineend_2])
 
             result['ISBN_1'] = info1['ISBN']
             result['medium_1'] = info1['medium']
@@ -252,7 +309,7 @@ def parse_publication_entry(entry):
 
         elif ISBN_segment.count('ISBN') == 1:
             ISBN_segment = clean_string(ISBN_segment)
-            info = parse_ISBN(ISBN_segment)
+            info = parse_ISBN_line(ISBN_segment)
             result['ISBN_1'] = info['ISBN']
             result['medium_1'] = info['medium']
             result['price_1'] = info['price']
@@ -306,7 +363,7 @@ if __name__ == '__main__':
 
     if DEBUG:
         lower = 1000
-        upper = 1219
+        upper = 1500
 
     begin, end = 0, 0
     for rank in range(lower, upper + 1):
