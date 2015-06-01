@@ -4,7 +4,7 @@ DEBUG = True
 DASH = '—'
 SLASH = '/'
 
-currencies = ('$', 'CNY', 'USD')
+currencies = ('$', 'CNY', 'USD', 'GBP')
 
 def is_Chi_char(char):
     return '\u4e00' <= char <= '\u9fff'
@@ -131,14 +131,13 @@ def parse_ISBN(s):
     if ('$' not in s) and (':' not in s) and ('CNY' not in s):
         # Only ISBN number
         return {'ISBN': s[5:],
-                'medium': '',
+                'medium': medium,
                 'price': '',
-                'price_currency': ''}
-
-    price_currency = ''
+                'price_currency': '',}
 
     if ':' not in s:
         s = s.replace('  ', ':')
+        s = s.replace(' $', ':$')
 
     ISBN_part, price_part = s.split(':')
     ISBN = ISBN_part.replace('ISBN ', '')
@@ -150,7 +149,6 @@ def parse_ISBN(s):
     else:
         price = price_part
         price_currency = ''
-
 
     return {'ISBN': ISBN,
             'medium': medium,
@@ -167,12 +165,22 @@ def parse_publication_entry(entry):
     if is_Chinese_book:
         segs = entry.splitlines()
 
+        if (len(segs[-1]) > len('(200x-xxxxx)')) or  ('劃' in segs[-1] and len(segs[-1]) <= 4):
+            del segs[-1]  # Garbages from PDF-to-txt conversion.
+
         if DEBUG:
             print(segs)
 
-        if len(segs[-1]) > len('(200x-xxxxx)'):
-            del segs[-1]  # Garbage from PDF-to-txt conversion.
-        result['serial'] = segs[-1][1:-1]
+        serial_segment = segs[-1]
+        result['serial'] = serial_segment[1:-1]
+
+        ISBN_segment = segs[-2]
+        if 'ISBN' in segs[-2]:
+            isbn_info = parse_ISBN(ISBN_segment)
+            result['ISBN_1'] = isbn_info['ISBN']
+            result['medium_1'] = isbn_info['medium']
+            result['price_1'] = isbn_info['price']
+            result['price_1_currency'] = isbn_info['price_currency']
 
     else:  # English publication
 
@@ -297,8 +305,8 @@ if __name__ == '__main__':
     upper = 2818
 
     if DEBUG:
-        lower = 100
-        upper = 200
+        lower = 1000
+        upper = 1219
 
     begin, end = 0, 0
     for rank in range(lower, upper + 1):
@@ -325,12 +333,12 @@ if __name__ == '__main__':
                       'publisher',
                       'ISBN_1',
                       'medium_1',
-                      'price_1',
                       'price_1_currency',
+                      'price_1',
                       'ISBN_2',
                       'medium_2',
-                      'price_2',
                       'price_2_currency',
+                      'price_2',
                       'location_of_publication',
                       'year_of_publication',
                       'format',
