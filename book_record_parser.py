@@ -4,6 +4,8 @@ DEBUG = True
 DASH = '—'
 SLASH = '/'
 
+currencies = ('$', 'CNY', 'USD')
+
 def is_Chi_char(char):
     return '\u4e00' <= char <= '\u9fff'
 
@@ -14,7 +16,7 @@ def clean_string(seg):
 
     PERIOD_WHITELIST = ('ed.',
                         'pbk.',
-                        'cm.'
+                        'cm.',
                         )
 
     result = seg.replace('\n', ' ')
@@ -96,13 +98,25 @@ def has_detailed_edition_info(s):
             return True
     return False
 
+def has_author_info(s):
+    keywords = ('著',
+                '編',
+                '譯',
+                )
+    for kw in keywords:
+        if kw in s:
+            return True
+    return False
+
+
 def parse_ISBN(s):
     """
     Parse a string in the form of "ISBN 978-1-4058-6246-2 (pbk.) : Unpriced"
     Return a dictionary, in the form of
     {'ISBN': '978-1-4058-6246-2',
      'medium': 'pbk.',
-     'price': 'Unpriced',}
+     'price': 'Unpriced',
+     'price_currency': '',}
     :param s:
     :return:
     """
@@ -110,21 +124,38 @@ def parse_ISBN(s):
         pos_left = s.find('(')
         pos_right = s.find(')')
         medium = s[pos_left+1:pos_right]
-        s = s[:pos_left] + s[pos_right+1:]
+        s = s[:pos_left] + ' ' + s[pos_right+1:]
     else:
         medium = ''
 
-    try:
-        s1, s2 = s.rsplit(':', maxsplit=1)
-    except ValueError:
-        s1, s2 = s.rsplit('$', maxsplit=1)
+    if ('$' not in s) and (':' not in s) and ('CNY' not in s):
+        # Only ISBN number
+        return {'ISBN': s[5:],
+                'medium': '',
+                'price': '',
+                'price_currency': ''}
 
-    ISBN = s1[5:]
-    price = s2
+    price_currency = ''
+
+    if ':' not in s:
+        s = s.replace('  ', ':')
+
+    ISBN_part, price_part = s.split(':')
+    ISBN = ISBN_part.replace('ISBN ', '')
+    for currency in currencies:
+        if currency in price_part:
+            price = price_part.replace(currency, '')
+            price_currency = currency
+            break
+    else:
+        price = price_part
+        price_currency = ''
+
 
     return {'ISBN': ISBN,
             'medium': medium,
-            'price': price}
+            'price': price,
+            'price_currency': price_currency}
 
 
 def parse_publication_entry(entry):
@@ -134,7 +165,14 @@ def parse_publication_entry(entry):
     result = {}
 
     if is_Chinese_book:
-        pass  # TODO
+        segs = entry.splitlines()
+
+        if DEBUG:
+            print(segs)
+
+        if len(segs[-1]) > len('(200x-xxxxx)'):
+            del segs[-1]  # Garbage from PDF-to-txt conversion.
+        result['serial'] = segs[-1][1:-1]
 
     else:  # English publication
 
@@ -197,18 +235,29 @@ def parse_publication_entry(entry):
             result['ISBN_1'] = info1['ISBN']
             result['medium_1'] = info1['medium']
             result['price_1'] = info1['price']
+            result['price_1_currency'] = info1['price_currency']
 
             result['ISBN_2'] = info2['ISBN']
             result['medium_2'] = info2['medium']
             result['price_2'] = info2['price']
+            result['price_2_currency'] = info1['price_currency']
+
+        elif ISBN_segment.count('ISBN') == 1:
+            ISBN_segment = clean_string(ISBN_segment)
+            info = parse_ISBN(ISBN_segment)
+            result['ISBN_1'] = info['ISBN']
+            result['medium_1'] = info['medium']
+            result['price_1'] = info['price']
+            result['price_1_currency'] = info['price_currency']
 
         if (len(serial_segment) > len('(xxxx-yyyyy)\n')) and ('\n' in serial_segment):
             serial_segment = serial_segment.split('\n', maxsplit=1)[0]
             # Remove garbage from PDF headers
 
         if 'cm.' in format_segment:
-            format_segment, detail_info = format_segment.split('cm.')
+            format_segment, detail_info = format_segment.split('cm.', maxsplit=1)
             format_segment = format_segment + 'cm.'
+
         else:
             detail_info = ''
 
@@ -217,8 +266,6 @@ def parse_publication_entry(entry):
         result['serial'] = serial_segment
 
         result['details'] = detail_info
-
-
 
     for key in result:
         result[key] = clean_string(result[key])
@@ -248,16 +295,17 @@ if __name__ == '__main__':
 
     lower = 1
     upper = 2818
+
     if DEBUG:
-        lower = 1
-        upper = 100
+        lower = 100
+        upper = 200
 
     begin, end = 0, 0
     for rank in range(lower, upper + 1):
         begin = txt.find(str(rank) + '\n', end)
         end = txt.find(str(rank + 1) + '\n', begin)
         offset = len(str(rank))
-        entry_in_txt = txt[begin + offset:end]
+        entry_in_txt = txt[begin+1 + offset:end]
 
         record = parse_publication_entry(entry_in_txt)
         records.append(record)
@@ -278,9 +326,11 @@ if __name__ == '__main__':
                       'ISBN_1',
                       'medium_1',
                       'price_1',
+                      'price_1_currency',
                       'ISBN_2',
                       'medium_2',
                       'price_2',
+                      'price_2_currency',
                       'location_of_publication',
                       'year_of_publication',
                       'format',
