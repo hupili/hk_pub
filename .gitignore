@@ -3,6 +3,5 @@
 test.py
 debug*
 *.swp
-
-
+*.log
 *.pyc
