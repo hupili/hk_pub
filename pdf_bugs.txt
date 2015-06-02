@@ -1,1 +1,2 @@
-2008 Season 1: No. 1325, Serial 2008-02154, missing price for bundle.
+2008 Season 1: ID 1325, Serial 2008-02154, missing price for bundle.
+2008 Season 1: ID 894, Serial (2008-01455), double colons
