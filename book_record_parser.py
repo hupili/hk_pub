@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(filename='book_record_parser.log',level=logging.WARNING)
 logger = logging.getLogger()
 
-DEBUG = True
+DEBUG = False
 DASH = '—'
 SLASH = '/'
 BILINGUAL_TITLE_MARKER = '='
@@ -484,11 +484,12 @@ if __name__ == '__main__':
     records = []
 
     for this_year in range(2008, 2008+1):
-        for this_season in (1, 2):
+        for this_season in (1, 2,):
 
             source_path = 'txt/'+str(this_year)+'s'+str(this_season)+'.txt'
             f = open(source_path)
             txt = f.read()
+            f.close()
 
             # Cleaning
             txt = txt.replace('1 =', '=')
@@ -503,6 +504,10 @@ if __name__ == '__main__':
                     pass
 
             if DEBUG:
+                print('upper=', upper)
+                print('lower=', lower)
+
+            if DEBUG:
                 # lower = 1
                 # upper = 2818
                 pass
@@ -513,6 +518,8 @@ if __name__ == '__main__':
                     print('rank='+str(rank))
                 begin = txt.find(str(rank) + '\n', end)
                 end = txt.find(str(rank + 1) + '\n', begin)
+                if DEBUG:
+                    print('begin, end=',begin, end)
                 offset = len(str(rank))
                 entry_in_txt = txt[begin+1 + offset:end]
 
@@ -560,3 +567,4 @@ if __name__ == '__main__':
 
         for record in records:
             writer.writerow(record)
+    print('Done.')
