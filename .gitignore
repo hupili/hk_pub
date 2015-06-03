@@ -5,3 +5,4 @@ debug*
 *.swp
 *.log
 *.pyc
+*unlocked*

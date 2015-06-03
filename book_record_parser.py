@@ -7,19 +7,28 @@ logger = logging.getLogger()
 DEBUG = True
 DASH = '—'
 SLASH = '/'
+BILINGUAL_TITLE_MARKER = '='
 
-currencies = ('$', 'CNY', 'USD', 'GBP', 'NTD')
+currencies = ('$', 'CNY', 'USD', 'GBP', 'NTD',)
 serial_prefixes = ('ISSN', 'ISBN')
+format_segment_markers = ('厘米', )
+contributor_keywords = ('著', '編', '譯', '撰文',)
+author_keywords = ('著', '原作',)
 
-this_year = 2008
-
-def contains_with_any(s, prefixes):
+def starts_with_any(s, prefixes):
     for prefix in prefixes:
         if s.startswith(prefix):
             return True
     return False
 
-def is_Chi_char(char):
+def contains_any(s, keywords):
+    for kw in keywords:
+        if kw in s:
+            return True
+    return False
+
+def is_chinese_char(char):
+    # TODO: more precise ranges. Now this function produces false positives.
     return '\u4e00' <= char <= '\u9fff'
 
 def is_encapsulated_in_brackets(s):
@@ -50,7 +59,7 @@ def clean_string(seg):
     if not seg:
         return ''
 
-    PERIOD_WHITELIST = ('ed.',
+    period_whitelist = ('ed.',
                         'pbk.',
                         'cm.',
                         )
@@ -61,7 +70,7 @@ def clean_string(seg):
 
     keep_trailing_symbol = False
     while result and ((result[-1] == ' ') or (result[-1] == '.')):
-        for s in PERIOD_WHITELIST:
+        for s in period_whitelist:
             if result.endswith(s):
                 keep_trailing_symbol = True
         if keep_trailing_symbol:
@@ -92,7 +101,7 @@ def clean_string(seg):
     try:
         for i in range(1, len(result) - 1):
             char, char_before, char_after = result[i], result[i - 1], result[i + 1]
-            if char == ' ' and (is_Chi_char(char_before) or is_Chi_char(char_after)):
+            if char == ' ' and (is_chinese_char(char_before) or is_chinese_char(char_after)):
                 result = result[:i] + result[i + 1:]
     except IndexError:
         pass
@@ -114,6 +123,8 @@ def is_author_name(s):
         return False
     seg1, seg2 = s.split(',', maxsplit=1)
     seg2 = seg2[1:]  # Delete the space
+    if not seg2:
+        return False
     if seg1.isupper() and seg2[0].isupper() and seg2[1:].islower():
         return True
         # TODO: False negative with names like "HOWARD, Leslie R."
@@ -129,21 +140,11 @@ def has_detailed_edition_info(s):
                 'version',
                 'Vol.',
                 )
-    for kw in keywords:
-        if kw in s:
-            return True
-    return False
+
+    return contains_any(s, keywords)
 
 def has_author_info(s):
-    keywords = ('著',
-                '編',
-                '譯',
-                )
-    for kw in keywords:
-        if kw in s:
-            return True
-    return False
-
+    return contains_any(s, contributor_keywords)
 
 def parse_serial_line(s):
     """
@@ -252,7 +253,7 @@ def parse_publication_entry(entry):
         double_ISBN = entry.count('ISBN ') == 2
         double_ISSN = entry.count('ISSN ') == 2
 
-        if contains_with_any(segs[-2], serial_prefixes):
+        if starts_with_any(segs[-2], serial_prefixes):
             serial_segment = segs[-2]
             info = parse_serial_line(serial_segment)
 
@@ -278,33 +279,96 @@ def parse_publication_entry(entry):
         else:
             segs.insert(-1, 'Serial filler row')
 
-        if (")" in segs[-3]) and not ('(' in segs[-3]):
-            # Second line of a two-line stories
-            segs[-3] = segs[-4].replace('\n', '') + segs[-3]
-            del segs[-4]
-
-        if (is_description(segs[-3])) or (is_encapsulated_in_brackets(segs[-3])):
-            result['details'] = segs[-3]
+        if is_description(segs[-3]) or is_encapsulated_in_brackets(segs[-3]):
+            try:
+                result['details'] += segs[-3]
+            except KeyError:
+                result['details'] = segs[-3]
             del segs[-3]
-        else:
-            result['format'] = segs[-3]
 
-        if str(this_year) not in segs[-4]:
-            publisher_segment = segs[-3] + segs[-4]
-            del segs[-4]
+        for row_number in range(len(segs)):
+            if has_author_info(segs[row_number]):
+                author_segment_begin = row_number
+                break
         else:
-            publisher_segment = segs[-4]
+            author_segment_begin = None
 
-        year, location, publisher = publisher_segment.split(' ', maxsplit=2)
-        if '修訂二版' in publisher:
-            result['details'] += '修訂二版'
-            publisher = publisher.replace('修訂二版', '')
-        result['year_of_publication'] = year
-        result['location_of_publication'] = location
-        result['publisher'] = publisher
+        for row_number in range(len(segs)):
+            first_four_char = segs[row_number][:4]
+            if first_four_char == str(this_year) or first_four_char == str(this_year-1):
+                publisher_segment_begin = row_number
+                break
+        else:
+            publisher_segment_begin = None
+
+        for row_number in reversed(range(len(segs))):
+            row = segs[row_number]
+            if contains_any(row, format_segment_markers):
+                format_segment_begin = row_number
+                break
+        else:
+            format_segment_begin = None
+
+        for row_number in (
+                author_segment_begin,
+                publisher_segment_begin,
+                format_segment_begin,
+        ):
+            if row_number is not None:
+                title_segment = ' '.join(segs[0:row_number])
+                break
+        else:
+            title_segment = ' '.join(segs)
+
+        authorship_segment = ''
+        if author_segment_begin is not None:
+            for row_number in (
+                    publisher_segment_begin,
+                    format_segment_begin,
+            ):
+                if row_number is not None:
+                    authorship_segment = ' '.join(segs[author_segment_begin:row_number])
+                    break
+        else:
+            authorship_segment = ''
+
+        if publisher_segment_begin is not None:
+            if format_segment_begin is not None:
+                publisher_segment = ' '.join(segs[publisher_segment_begin:format_segment_begin])
+            else:
+                publisher_segment = ' '.join(segs[publisher_segment_begin:-2])
+        else:
+            publisher_segment = ''
+
+        if format_segment_begin is not None:
+            format_segment = ' '.join(segs[format_segment_begin:-3])
+        else:
+            format_segment = ' '
+
+        if BILINGUAL_TITLE_MARKER in title_segment:
+            result['title_chi'], result['title_eng'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
+        else:
+            result['title_chi'] = title_segment
+
+        # Process authorship_segment
+        result['detailed_authorship'] = authorship_segment
+        for kw in author_keywords:
+            if kw in authorship_segment:
+                result['author'] = authorship_segment.split(kw, maxsplit=1)[0]
+                break
+
+        # Process publisher_segment
+        try:
+            year, location, publisher = publisher_segment.split(' ', maxsplit=2)
+            result['year_of_publication'] = year
+            result['location_of_publication'] = location
+            result['publisher'] = publisher
+        except ValueError:
+            result['publisher'] = publisher_segment
+
+        result['format'] = format_segment
 
     else:
-
         result['language'] = 'English'
 
         title_segment = segs[0]
@@ -329,21 +393,24 @@ def parse_publication_entry(entry):
             result['edition'] = clean_string(segs[1])
             segs[1:-1] = segs[2:-1]
 
-        if '=' in title_segment:
+        if BILINGUAL_TITLE_MARKER in title_segment:
             # bilingual title
-            result['title_eng'] = title_segment.split('=')[0]
-            result['title_chi'] = title_segment.split('=')[1]
+            result['title_eng'], result['title_chi'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
         else:
             result['title_eng'] = title_segment
 
         publisher_segment = segs[1]
-        s1, s2 = publisher_segment.split(':', maxsplit=1)
-        s2, s3 = s2.rsplit(',', maxsplit=1)
-        result['location_of_publication'] = s1
-        result['publisher'] = s2
-        result['year_of_publication'] = s3
+        try:
+            s1, s2 = publisher_segment.split(':', maxsplit=1)
+            s2, s3 = s2.rsplit(',', maxsplit=1)
+            result['location_of_publication'] = s1
+            result['publisher'] = s2
+            result['year_of_publication'] = s3
+        except ValueError:
+            # No comma
+            result['publisher'] = publisher_segment
 
-        id_marker = '(2008'
+        id_marker = '('+str(this_year)
         ISBN_marker = 'ISBN'
         if ISBN_marker in segs[2]:
             format_segment = segs[2][:segs[2].find(ISBN_marker)]
@@ -414,46 +481,56 @@ def parse_publication_entry(entry):
 
 if __name__ == '__main__':
 
-    source_url = 'txt/2008_txt'
-    f = open(source_url)
-    txt = f.read()
-
-    # Cleaning
-    txt = txt.replace('1 =', '=')
-    txt = txt.replace('1 —', '—')
-
     records = []
 
-    lower = 1
-    upper = 2818
+    for this_year in range(2008, 2008+1):
+        for this_season in (1, 2):
 
-    if DEBUG:
-        lower = 1191
-        upper = 1191
+            source_path = 'txt/'+str(this_year)+'s'+str(this_season)+'.txt'
+            f = open(source_path)
+            txt = f.read()
 
-    begin, end = 0, 0
-    for rank in range(lower, upper + 1):
-        print('rank=',rank)
-        begin = txt.find(str(rank) + '\n', end)
-        end = txt.find(str(rank + 1) + '\n', begin)
-        offset = len(str(rank))
-        entry_in_txt = txt[begin+1 + offset:end]
+            # Cleaning
+            txt = txt.replace('1 =', '=')
+            txt = txt.replace('1 —', '—')
 
-        try:
-            record = parse_publication_entry(entry_in_txt)
-            records.append(record)
-        except ValueError as error:
-            logger.warn('Failed to parse:\n'+entry_in_txt)
-            logger.info(str(error))
+            lower = int(txt.splitlines()[0])
+            upper = 0
+            for line in txt.splitlines():
+                try:
+                    upper = int(line)
+                except ValueError:
+                    pass
 
+            if DEBUG:
+                # lower = 1
+                # upper = 2818
+                pass
 
-    prefix = ''
-    if DEBUG:
-        import random
+            begin, end = 0, 0
+            for rank in range(lower, upper + 1):
+                if DEBUG:
+                    print('rank='+str(rank))
+                begin = txt.find(str(rank) + '\n', end)
+                end = txt.find(str(rank + 1) + '\n', begin)
+                offset = len(str(rank))
+                entry_in_txt = txt[begin+1 + offset:end]
 
-        prefix = 'debug' + str(random.randint(1, 1000)) + '_'
+                try:
+                    record = parse_publication_entry(entry_in_txt)
+                    records.append(record)
+                except ValueError as error:
+                    if not DEBUG:
+                        logger.warn('Failed to parse:\n'+entry_in_txt)
+                    else:
+                        raise error
 
-    with open(prefix + '2008.csv', 'w', newline='') as csvfile:
+            prefix = ''
+            if DEBUG:
+                import random
+                prefix = 'debug' + str(random.randint(1, 1000)) + '_'
+
+    with open('output.csv', 'w', newline='') as csvfile:
         fieldnames = ['serial',
                       'title_eng',
                       'title_chi',
