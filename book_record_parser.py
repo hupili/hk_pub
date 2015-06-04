@@ -223,7 +223,6 @@ def parse_serial_line(s):
             'price': price,
             'price_currency': price_currency}
 
-
 def parse_publication_entry(entry):
     segs = entry.split(DASH)
     is_Chinese_book = len(segs) == 1
@@ -483,13 +482,16 @@ if __name__ == '__main__':
 
     records = []
 
-    for this_year in range(2008, 2008+1):
-        for this_season in (1, 2,):
+    for this_year in range(2008, 2014+1):
+        for this_season in (1, 2, 3, 4):
 
-            source_path = 'txt/'+str(this_year)+'s'+str(this_season)+'.txt'
-            f = open(source_path)
-            txt = f.read()
-            f.close()
+            try:
+                source_path = 'txt/'+str(this_year)+'s'+str(this_season)+'.txt'
+                f = open(source_path)
+                txt = f.read()
+                f.close()
+            except IOError:
+                break
 
             # Cleaning
             txt = txt.replace('1 =', '=')
@@ -514,8 +516,7 @@ if __name__ == '__main__':
 
             begin, end = 0, 0
             for rank in range(lower, upper + 1):
-                if DEBUG:
-                    print('rank='+str(rank))
+                print('Processing year', this_year, 'season', this_season, 'ID', rank)
                 begin = txt.find(str(rank) + '\n', end)
                 end = txt.find(str(rank + 1) + '\n', begin)
                 if DEBUG:
@@ -526,7 +527,7 @@ if __name__ == '__main__':
                 try:
                     record = parse_publication_entry(entry_in_txt)
                     records.append(record)
-                except ValueError as error:
+                except (ValueError, IndexError, KeyError) as error:
                     if not DEBUG:
                         logger.warn('Failed to parse:\n'+entry_in_txt)
                     else:
