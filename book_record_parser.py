@@ -473,10 +473,10 @@ def parse_publication_entry(entry):
         print('\n')
 
     if not DEBUG:
-        result['original_record'] = entry
+        # result['original_record'] = entry
+        pass
 
     return result
-
 
 if __name__ == '__main__':
 
@@ -484,7 +484,6 @@ if __name__ == '__main__':
 
     for this_year in range(2008, 2014+1):
         for this_season in (1, 2, 3, 4):
-
             try:
                 source_path = 'txt/'+str(this_year)+'s'+str(this_season)+'.txt'
                 f = open(source_path)
@@ -516,13 +515,15 @@ if __name__ == '__main__':
 
             begin, end = 0, 0
             for rank in range(lower, upper + 1):
-                print('Processing year', this_year, 'season', this_season, 'ID', rank)
+                print('Parsing year', this_year, 'season', this_season, 'ID', rank)
                 begin = txt.find(str(rank) + '\n', end)
                 end = txt.find(str(rank + 1) + '\n', begin)
                 if DEBUG:
                     print('begin, end=',begin, end)
                 offset = len(str(rank))
                 entry_in_txt = txt[begin+1 + offset:end]
+
+                # FIXME: At the moment, the last item of each season would certainly go wrong.
 
                 try:
                     record = parse_publication_entry(entry_in_txt)
@@ -560,7 +561,7 @@ if __name__ == '__main__':
                       'year_of_publication',
                       'format',
                       'details',
-                      'original_record',
+                      # 'original_record',
                       'edition',
                       ]
         writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=fieldnames)
