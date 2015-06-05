@@ -15,6 +15,31 @@ format_segment_markers = ('厘米', )
 contributor_keywords = ('著', '編', '譯', '撰文',)
 author_keywords = ('著', '原作',)
 
+fieldnames = ['serial',
+              'title_eng',
+              'title_chi',
+              'language',
+              'author',
+              'detailed_authorship',
+              'publisher',
+              'ISBN_1',
+              'ISSN_1',
+              'medium_1',
+              'price_1_currency',
+              'price_1',
+              'ISBN_2',
+              'ISSN_2',
+              'medium_2',
+              'price_2_currency',
+              'price_2',
+              'location_of_publication',
+              'year_of_publication',
+              'format',
+              'details',
+              # 'original_record',
+              'edition',
+              ]
+
 def starts_with_any(s, prefixes):
     for prefix in prefixes:
         if s.startswith(prefix):
@@ -540,30 +565,6 @@ if __name__ == '__main__':
                 prefix = 'debug' + str(random.randint(1, 1000)) + '_'
 
     with open('output.csv', 'w', newline='') as csvfile:
-        fieldnames = ['serial',
-                      'title_eng',
-                      'title_chi',
-                      'language',
-                      'author',
-                      'detailed_authorship',
-                      'publisher',
-                      'ISBN_1',
-                      'ISSN_1',
-                      'medium_1',
-                      'price_1_currency',
-                      'price_1',
-                      'ISBN_2',
-                      'ISSN_2',
-                      'medium_2',
-                      'price_2_currency',
-                      'price_2',
-                      'location_of_publication',
-                      'year_of_publication',
-                      'format',
-                      'details',
-                      # 'original_record',
-                      'edition',
-                      ]
         writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=fieldnames)
         writer.writeheader()
 
