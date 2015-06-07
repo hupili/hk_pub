@@ -15,36 +15,37 @@ format_segment_markers = ('厘米', )
 contributor_keywords = ('著', '編', '譯', '撰文',)
 author_keywords = ('著', '原作',)
 
-fieldnames = ['serial',
-              'title_eng',
-              'title_chi',
-              'language',
-              'author',
-              'detailed_authorship',
-              'publisher',
-              'ISBN_1',
-              'ISSN_1',
-              'medium_1',
-              'price_1_currency',
-              'price_1',
-              'ISBN_2',
-              'ISSN_2',
-              'medium_2',
-              'price_2_currency',
-              'price_2',
-              'location_of_publication',
-              'year_of_publication',
-              'format',
-              'details',
-              # 'original_record',
-              'edition',
-              ]
+record_fieldnames = ['serial',
+                     'title_eng',
+                     'title_chi',
+                     'language',
+                     'author',
+                     'detailed_authorship',
+                     'publisher',
+                     'ISBN_1',
+                     'ISSN_1',
+                     'medium_1',
+                     'price_1_currency',
+                     'price_1',
+                     'ISBN_2',
+                     'ISSN_2',
+                     'medium_2',
+                     'price_2_currency',
+                     'price_2',
+                     'location_of_publication',
+                     'year_of_publication',
+                     'format',
+                     'details',
+                     # 'original_record',
+                     'edition',
+                     ]
 
 def starts_with_any(s, prefixes):
-    for prefix in prefixes:
-        if s.startswith(prefix):
+    for pref in prefixes:
+        if s.startswith(pref):
             return True
     return False
+
 
 def contains_any(s, keywords):
     for kw in keywords:
@@ -52,9 +53,11 @@ def contains_any(s, keywords):
             return True
     return False
 
+
 def is_chinese_char(char):
     # TODO: more precise ranges. Now this function produces false positives.
     return '\u4e00' <= char <= '\u9fff'
+
 
 def is_encapsulated_in_brackets(s):
     try:
@@ -71,8 +74,8 @@ def is_description(s):
                            '附鐳射光碟1隻',
                            )
     common_description_keywords = ('對照',
-                                   '附'
-                                  )
+                                   '附',
+                                   )
 
     for kw in common_description_keywords:
         if kw in s:
@@ -106,21 +109,21 @@ def clean_string(seg):
     while result and result[0] == ' ':
         result = result[1:]
 
+    # Clean string like "c2008"
     if (len(result) == 5) and result[0] == 'c':
         try:
             int(result[1:])
             result = result[1:]
         except ValueError:
             pass
-            # Clean string like "c2008"
 
+    # Clean string like "[2008]"
     if result and (result[0] == '[') and (result[-1] == ']') and (len(result) == 6):
         try:
             int(result[1:-1])
             result = result[1:-1]
         except ValueError:
             pass
-            # Clean string like "[2008]"
 
     # Delete spaces around Chinese characters
     try:
@@ -131,6 +134,7 @@ def clean_string(seg):
     except IndexError:
         pass
 
+    # Remove initiating and trailing brackets
     if len(result) >= 3:
         if (result[0] == '(') and (result[-1] == ')'):
             result = result[1:-1]
@@ -219,7 +223,8 @@ def parse_serial_line(s):
                 'type_of_serial': s[:4],
                 'medium': medium,
                 'price': '',
-                'price_currency': '',}
+                'price_currency': '',
+                }
 
     if ':' not in s:
         s = s.replace('  ', ':', 1)
@@ -248,246 +253,259 @@ def parse_serial_line(s):
             'price': price,
             'price_currency': price_currency}
 
-def parse_publication_entry(entry):
-    segs = entry.split(DASH)
-    is_Chinese_book = len(segs) == 1
+def parse_Chinese_publication_entry(entry):
 
-    result = {}
+    result = dict()
 
-    if is_Chinese_book:
-        result['language'] = 'Chinese'
+    result['language'] = 'Chinese'
 
-        segs = entry.splitlines()
+    segs = entry.splitlines()
 
-        if (len(segs[-1]) > len('(200x-xxxxx)')) or  ('劃' in segs[-1] and len(segs[-1]) <= 4):
-            del segs[-1]  # Garbages from PDF-to-txt conversion.
+    if (len(segs[-1]) > len('(200x-xxxxx)')) or ('劃' in segs[-1] and len(segs[-1]) <= 4):
+        del segs[-1]  # Garbage from PDF-to-txt conversion.
 
-        # Some times there are two lines of garbages, in the form of
-        #     D1876 2009 ...
-        #     三劃
-        if not is_encapsulated_in_brackets(segs[-1]):
-            del segs[-1]
+    # Some times there are two lines of garbages, in the form of
+    #     D1876 2009 ...
+    #     三劃
+    if not is_encapsulated_in_brackets(segs[-1]):
+        del segs[-1]
 
-        if DEBUG:
-            print(segs)
+    if DEBUG:
+        print(segs)
 
-        id_segment = segs[-1]
-        result['serial'] = id_segment[1:-1]
+    id_segment = segs[-1]
+    result['serial'] = id_segment[1:-1]
 
-        double_ISBN = entry.count('ISBN ') == 2
-        double_ISSN = entry.count('ISSN ') == 2
+    double_ISBN = entry.count('ISBN ') == 2
+    double_ISSN = entry.count('ISSN ') == 2
 
-        if starts_with_any(segs[-2], serial_prefixes):
-            serial_segment = segs[-2]
+    if starts_with_any(segs[-2], serial_prefixes):
+        serial_segment = segs[-2]
+        info = parse_serial_line(serial_segment)
+
+        type_of_serial = info['type_of_serial']
+        result[type_of_serial+'_1'] = info[type_of_serial]
+
+        result['medium_1'] = info['medium']
+        result['price_1'] = info['price']
+        result['price_1_currency'] = info['price_currency']
+
+        if double_ISBN or double_ISSN:
+            serial_segment = segs[-3]
             info = parse_serial_line(serial_segment)
 
             type_of_serial = info['type_of_serial']
             result[type_of_serial+'_1'] = info[type_of_serial]
 
-            result['medium_1'] = info['medium']
-            result['price_1'] = info['price']
-            result['price_1_currency'] = info['price_currency']
-
-            if double_ISBN or double_ISSN:
-                serial_segment = segs[-3]
-                info = parse_serial_line(serial_segment)
-
-                type_of_serial = info['type_of_serial']
-                result[type_of_serial+'_1'] = info[type_of_serial]
-
-                result['medium_2'] = info['medium']
-                result['price_2'] = info['price']
-                result['price_2_currency'] = info['price_currency']
-                del segs[-3]
-
-        else:
-            segs.insert(-1, 'Serial filler row')
-
-        if is_description(segs[-3]) or is_encapsulated_in_brackets(segs[-3]):
-            try:
-                result['details'] += segs[-3]
-            except KeyError:
-                result['details'] = segs[-3]
+            result['medium_2'] = info['medium']
+            result['price_2'] = info['price']
+            result['price_2_currency'] = info['price_currency']
             del segs[-3]
 
-        for row_number in range(len(segs)):
-            if has_author_info(segs[row_number]):
-                author_segment_begin = row_number
-                break
-        else:
-            author_segment_begin = None
+    else:
+        segs.insert(-1, 'Serial filler row')
 
-        for row_number in range(len(segs)):
-            first_four_char = segs[row_number][:4]
-            if first_four_char == str(this_year) or first_four_char == str(this_year-1):
-                publisher_segment_begin = row_number
-                break
-        else:
-            publisher_segment_begin = None
+    if is_description(segs[-3]) or is_encapsulated_in_brackets(segs[-3]):
+        try:
+            result['details'] += segs[-3]
+        except KeyError:
+            result['details'] = segs[-3]
+        del segs[-3]
 
-        for row_number in reversed(range(len(segs))):
-            row = segs[row_number]
-            if contains_any(row, format_segment_markers):
-                format_segment_begin = row_number
-                break
-        else:
-            format_segment_begin = None
+    for row_number in range(len(segs)):
+        if has_author_info(segs[row_number]):
+            author_segment_begin = row_number
+            break
+    else:
+        author_segment_begin = None
 
+    for row_number in range(len(segs)):
+        first_four_char = segs[row_number][:4]
+        if first_four_char == str(this_year) or first_four_char == str(this_year-1):
+            publisher_segment_begin = row_number
+            break
+    else:
+        publisher_segment_begin = None
+
+    for row_number in reversed(range(len(segs))):
+        row = segs[row_number]
+        if contains_any(row, format_segment_markers):
+            format_segment_begin = row_number
+            break
+    else:
+        format_segment_begin = None
+
+    for row_number in (
+            author_segment_begin,
+            publisher_segment_begin,
+            format_segment_begin,
+    ):
+        if row_number is not None:
+            title_segment = ' '.join(segs[0:row_number])
+            break
+    else:
+        title_segment = ' '.join(segs)
+
+    authorship_segment = ''
+    if author_segment_begin is not None:
         for row_number in (
-                author_segment_begin,
                 publisher_segment_begin,
                 format_segment_begin,
         ):
             if row_number is not None:
-                title_segment = ' '.join(segs[0:row_number])
+                authorship_segment = ' '.join(segs[author_segment_begin:row_number])
                 break
-        else:
-            title_segment = ' '.join(segs)
-
+    else:
         authorship_segment = ''
-        if author_segment_begin is not None:
-            for row_number in (
-                    publisher_segment_begin,
-                    format_segment_begin,
-            ):
-                if row_number is not None:
-                    authorship_segment = ' '.join(segs[author_segment_begin:row_number])
-                    break
-        else:
-            authorship_segment = ''
 
-        if publisher_segment_begin is not None:
-            if format_segment_begin is not None:
-                publisher_segment = ' '.join(segs[publisher_segment_begin:format_segment_begin])
-            else:
-                publisher_segment = ' '.join(segs[publisher_segment_begin:-2])
-        else:
-            publisher_segment = ''
-
+    if publisher_segment_begin is not None:
         if format_segment_begin is not None:
-            format_segment = ' '.join(segs[format_segment_begin:-3])
+            publisher_segment = ' '.join(segs[publisher_segment_begin:format_segment_begin])
         else:
-            format_segment = ' '
+            publisher_segment = ' '.join(segs[publisher_segment_begin:-2])
+    else:
+        publisher_segment = ''
 
-        if BILINGUAL_TITLE_MARKER in title_segment:
-            result['title_chi'], result['title_eng'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
+    if format_segment_begin is not None:
+        format_segment = ' '.join(segs[format_segment_begin:-3])
+    else:
+        format_segment = ' '
+
+    if BILINGUAL_TITLE_MARKER in title_segment:
+        result['title_chi'], result['title_eng'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
+    else:
+        result['title_chi'] = title_segment
+
+    # Process authorship_segment
+    result['detailed_authorship'] = authorship_segment
+    for kw in author_keywords:
+        if kw in authorship_segment:
+            result['author'] = authorship_segment.split(kw, maxsplit=1)[0]
+            break
+
+    # Process publisher_segment
+    try:
+        year, location, publisher = publisher_segment.split(' ', maxsplit=2)
+        result['year_of_publication'] = year
+        result['location_of_publication'] = location
+        result['publisher'] = publisher
+    except ValueError:
+        result['publisher'] = publisher_segment
+
+    result['format'] = format_segment
+
+    return result
+
+def parse_English_publication_entry(entry):
+
+    segs = entry.split(DASH)
+
+    result = dict()
+
+    result['language'] = 'English'
+
+    title_segment = segs[0]
+    if title_segment[0] == '\n':
+        title_segment = title_segment[1:]
+
+    first_line = title_segment.split('\n', maxsplit=1)[0]
+    if is_author_name(first_line):
+        result['author'] = first_line
+        title_segment = title_segment.split('\n', maxsplit=1)[1]
+
+    if SLASH in title_segment:
+        if 'by' in title_segment:
+            result['detailed_authorship'] = title_segment.rsplit(SLASH, maxsplit=1)[1]
+            title_segment = title_segment.rsplit(SLASH, maxsplit=1)[0]
         else:
-            result['title_chi'] = title_segment
+            title_segment, result['author'] = title_segment.rsplit(SLASH, maxsplit=1)
 
-        # Process authorship_segment
-        result['detailed_authorship'] = authorship_segment
-        for kw in author_keywords:
-            if kw in authorship_segment:
-                result['author'] = authorship_segment.split(kw, maxsplit=1)[0]
-                break
+    if has_detailed_edition_info(segs[1]):
+        # This book is not the first edition, and the second segment is just
+        # "2nd ed.' or 'New ed.', et cetera.
+        result['edition'] = clean_string(segs[1])
+        segs[1:-1] = segs[2:-1]
 
-        # Process publisher_segment
-        try:
-            year, location, publisher = publisher_segment.split(' ', maxsplit=2)
-            result['year_of_publication'] = year
-            result['location_of_publication'] = location
-            result['publisher'] = publisher
-        except ValueError:
-            result['publisher'] = publisher_segment
+    if BILINGUAL_TITLE_MARKER in title_segment:
+        # bilingual title
+        result['title_eng'], result['title_chi'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
+    else:
+        result['title_eng'] = title_segment
 
-        result['format'] = format_segment
+    publisher_segment = segs[1]
+    try:
+        s1, s2 = publisher_segment.split(':', maxsplit=1)
+        s2, s3 = s2.rsplit(',', maxsplit=1)
+        result['location_of_publication'] = s1
+        result['publisher'] = s2
+        result['year_of_publication'] = s3
+    except ValueError:
+        # No comma
+        result['publisher'] = publisher_segment
+
+    id_marker = '('+str(this_year)
+    ISBN_marker = 'ISBN'
+    if ISBN_marker in segs[2]:
+        format_segment = segs[2][:segs[2].find(ISBN_marker)]
+        reminder = segs[2][segs[2].find(ISBN_marker):]
+        serial_segment = reminder[:reminder.find(id_marker)]
+        id_segment = reminder[reminder.find(id_marker):]
+    else:  # No ISBN
+        serial_segment = ''
+        format_segment = segs[2][:segs[2].find(id_marker)]
+        id_segment = segs[2][segs[2].find(id_marker):]
+
+    if serial_segment.count('ISBN') == 2:
+        pos_ISBN_1 = serial_segment.find('ISBN')
+        pos_lineend_1 = serial_segment.find('\n', pos_ISBN_1)
+        pos_ISBN_2 = serial_segment.find('ISBN', pos_ISBN_1+1)
+        pos_lineend_2 = serial_segment.find('\n', pos_ISBN_2)
+        info1 = parse_serial_line(serial_segment[pos_ISBN_1:pos_lineend_1])
+        info2 = parse_serial_line(serial_segment[pos_ISBN_2:pos_lineend_2])
+
+        result['ISBN_1'] = info1['ISBN']
+        result['medium_1'] = info1['medium']
+        result['price_1'] = info1['price']
+        result['price_1_currency'] = info1['price_currency']
+
+        result['ISBN_2'] = info2['ISBN']
+        result['medium_2'] = info2['medium']
+        result['price_2'] = info2['price']
+        result['price_2_currency'] = info1['price_currency']
+
+    elif serial_segment.count('ISBN') == 1:
+        serial_segment = clean_string(serial_segment)
+        info = parse_serial_line(serial_segment)
+        result['ISBN_1'] = info['ISBN']
+        result['medium_1'] = info['medium']
+        result['price_1'] = info['price']
+        result['price_1_currency'] = info['price_currency']
+
+    if (len(id_segment) > len('(xxxx-yyyyy)\n')) and ('\n' in id_segment):
+        id_segment = id_segment.split('\n', maxsplit=1)[0]
+        # Remove garbage from PDF headers
+
+    if 'cm.' in format_segment:
+        format_segment, detail_info = format_segment.split('cm.', maxsplit=1)
+        format_segment += 'cm.'  # Compensate for 'cm.' deleted by split.
 
     else:
-        result['language'] = 'English'
+        detail_info = ''
 
-        title_segment = segs[0]
-        if title_segment[0] == '\n':
-            title_segment = title_segment[1:]
+    result['format'] = format_segment
+    result['serial'] = id_segment
+    result['details'] = detail_info
 
-        first_line = title_segment.split('\n', maxsplit=1)[0]
-        if is_author_name(first_line):
-            result['author'] = first_line
-            title_segment = title_segment.split('\n', maxsplit=1)[1]
+    return result
 
-        if SLASH in title_segment:
-            if 'by' in title_segment:
-                result['detailed_authorship'] = title_segment.rsplit(SLASH, maxsplit=1)[1]
-                title_segment = title_segment.rsplit(SLASH, maxsplit=1)[0]
-            else:
-                title_segment, result['author'] = title_segment.rsplit(SLASH, maxsplit=1)
+def parse_publication_entry(entry):
 
-        if has_detailed_edition_info(segs[1]):
-            # This book is not the first edition, and the second segment is just
-            # "2nd ed.' or 'New ed.', et cetera.
-            result['edition'] = clean_string(segs[1])
-            segs[1:-1] = segs[2:-1]
+    is_English_book = DASH in entry  # English records are punctuated by dashes; Chinese records are not.
 
-        if BILINGUAL_TITLE_MARKER in title_segment:
-            # bilingual title
-            result['title_eng'], result['title_chi'] = title_segment.split(BILINGUAL_TITLE_MARKER, maxsplit=1)
-        else:
-            result['title_eng'] = title_segment
-
-        publisher_segment = segs[1]
-        try:
-            s1, s2 = publisher_segment.split(':', maxsplit=1)
-            s2, s3 = s2.rsplit(',', maxsplit=1)
-            result['location_of_publication'] = s1
-            result['publisher'] = s2
-            result['year_of_publication'] = s3
-        except ValueError:
-            # No comma
-            result['publisher'] = publisher_segment
-
-        id_marker = '('+str(this_year)
-        ISBN_marker = 'ISBN'
-        if ISBN_marker in segs[2]:
-            format_segment = segs[2][:segs[2].find(ISBN_marker)]
-            reminder = segs[2][segs[2].find(ISBN_marker):]
-            serial_segment = reminder[:reminder.find(id_marker)]
-            id_segment = reminder[reminder.find(id_marker):]
-        else:  # No ISBN
-            serial_segment = ''
-            format_segment =segs[2][:segs[2].find(id_marker)]
-            id_segment = segs[2][segs[2].find(id_marker):]
-
-        if serial_segment.count('ISBN') == 2:
-            pos_ISBN_1 = serial_segment.find('ISBN')
-            pos_lineend_1 = serial_segment.find('\n', pos_ISBN_1)
-            pos_ISBN_2 = serial_segment.find('ISBN', pos_ISBN_1+1)
-            pos_lineend_2 = serial_segment.find('\n', pos_ISBN_2)
-            info1 = parse_serial_line(serial_segment[pos_ISBN_1:pos_lineend_1])
-            info2 = parse_serial_line(serial_segment[pos_ISBN_2:pos_lineend_2])
-
-            result['ISBN_1'] = info1['ISBN']
-            result['medium_1'] = info1['medium']
-            result['price_1'] = info1['price']
-            result['price_1_currency'] = info1['price_currency']
-
-            result['ISBN_2'] = info2['ISBN']
-            result['medium_2'] = info2['medium']
-            result['price_2'] = info2['price']
-            result['price_2_currency'] = info1['price_currency']
-
-        elif serial_segment.count('ISBN') == 1:
-            serial_segment = clean_string(serial_segment)
-            info = parse_serial_line(serial_segment)
-            result['ISBN_1'] = info['ISBN']
-            result['medium_1'] = info['medium']
-            result['price_1'] = info['price']
-            result['price_1_currency'] = info['price_currency']
-
-        if (len(id_segment) > len('(xxxx-yyyyy)\n')) and ('\n' in id_segment):
-            id_segment = id_segment.split('\n', maxsplit=1)[0]
-            # Remove garbage from PDF headers
-
-        if 'cm.' in format_segment:
-            format_segment, detail_info = format_segment.split('cm.', maxsplit=1)
-            format_segment = format_segment + 'cm.'
-
-        else:
-            detail_info = ''
-
-        result['format'] = format_segment
-
-        result['serial'] = id_segment
-
-        result['details'] = detail_info
+    if is_English_book:
+        result = parse_English_publication_entry(entry)
+    else:
+        result = parse_Chinese_publication_entry(entry)
 
     for key in result:
         result[key] = clean_string(result[key])
@@ -548,7 +566,7 @@ if __name__ == '__main__':
                 offset = len(str(rank))
                 entry_in_txt = txt[begin+1 + offset:end]
 
-                # FIXME: At the moment, the last item of each season would certainly go wrong.
+                # FIXME: At the moment, the last item of each input text would certainly go wrong.
 
                 try:
                     record = parse_publication_entry(entry_in_txt)
@@ -565,9 +583,10 @@ if __name__ == '__main__':
                 prefix = 'debug' + str(random.randint(1, 1000)) + '_'
 
     with open('output.csv', 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=record_fieldnames)
         writer.writeheader()
 
         for record in records:
             writer.writerow(record)
     print('Done.')
+

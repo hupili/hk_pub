@@ -6,3 +6,4 @@ debug*
 *.log
 *.pyc
 *unlocked*
+analyse.py
