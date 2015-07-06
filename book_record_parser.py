@@ -14,6 +14,7 @@ BILINGUAL_TITLE_MARKER = '='
 currencies = ('$', 'CNY', 'USD', 'GBP', 'NTD',)
 serial_prefixes = ('ISSN', 'ISBN')
 format_segment_markers = ('厘米', )
+format_segment_markers_eng = ('pbk.', )
 contributor_keywords = ('著', '編', '譯', '撰文',)
 author_keywords = ('著', '原作',)
 
@@ -272,14 +273,15 @@ def parse_Chinese_publication_entry(entry):
     if not is_encapsulated_in_brackets(segs[-1]):
         del segs[-1]
 
-    if DEBUG:
-        print(segs)
-
     id_segment = segs[-1]
     result['serial'] = id_segment[1:-1]
 
     double_ISBN = entry.count('ISBN ') == 2
     double_ISSN = entry.count('ISSN ') == 2
+
+    if (')' in segs[-2]) and ('(' not in segs[-2]):
+        segs[-3] = segs[-3] + segs[-2]
+        del segs[-2]
 
     if starts_with_any(segs[-2], serial_prefixes):
         serial_segment = segs[-2]
@@ -321,9 +323,10 @@ def parse_Chinese_publication_entry(entry):
     else:
         author_segment_begin = None
 
+    # Locate publisher segments
     for row_number in range(len(segs)):
         first_four_char = segs[row_number][:4]
-        if first_four_char == str(this_year) or first_four_char == str(this_year-1):
+        if first_four_char.isdigit():  # Such as 2009
             publisher_segment_begin = row_number
             break
     else:
@@ -445,17 +448,29 @@ def parse_English_publication_entry(entry):
         # No comma
         result['publisher'] = publisher_segment
 
-    id_marker = '('+str(this_year)
     ISBN_marker = 'ISBN'
+    id_position = 0
     if ISBN_marker in segs[2]:
         format_segment = segs[2][:segs[2].find(ISBN_marker)]
         reminder = segs[2][segs[2].find(ISBN_marker):]
-        serial_segment = reminder[:reminder.find(id_marker)]
-        id_segment = reminder[reminder.find(id_marker):]
+        for id_position in range(0, len(reminder)):
+            try:
+                if (segs[2][id_position] == '(') and (reminder[id_position+1:id_position+5].isdigit()):
+                    break
+            except KeyError:
+                continue
+        serial_segment = reminder[:id_position]
+        id_segment = reminder[id_position:]
     else:  # No ISBN
         serial_segment = ''
-        format_segment = segs[2][:segs[2].find(id_marker)]
-        id_segment = segs[2][segs[2].find(id_marker):]
+        for id_position in range(0, len(segs[2])):
+            try:
+                if (segs[2][id_position] == '(') and (segs[2][id_position+1:id_position+5].isdigit()):
+                    break
+            except KeyError:
+                continue
+        format_segment = segs[2][:id_position]
+        id_segment = segs[2][id_position:]
 
     if serial_segment.count('ISBN') == 2:
         pos_ISBN_1 = serial_segment.find('ISBN')
@@ -494,6 +509,24 @@ def parse_English_publication_entry(entry):
     else:
         detail_info = ''
 
+    # Extract information like "(pbk.)"
+    for marker in format_segment_markers_eng:
+        if marker in detail_info:
+            detail_info = detail_info.replace('('+marker+')', '')
+            format_segment += ' '+marker
+
+    # Extract information like "$356.00"
+    for currency in currencies:
+        if currency in detail_info:
+            pos_price_begin = detail_info.find(currency)
+            pos_price_end = detail_info.find(' ', pos_price_begin)
+            price = detail_info[pos_price_begin:pos_price_end]
+            detail_info = detail_info[:pos_price_begin] + detail_info[pos_price_end+1:]
+            try:
+                result['price_1'] += price
+            except KeyError:
+                result['price_1'] = price
+
     result['format'] = format_segment
     result['serial'] = id_segment
     result['details'] = detail_info
@@ -527,6 +560,24 @@ if __name__ == '__main__':
 
     records = []
 
+    if DEBUG:
+        this_year = 2009
+        this_season = 4
+        s = """
+良友合訂本. 第2冊. 第十三期至二十四期
+(1927-28)
+2007 香港 良友圖書有限公司
+38 厘米 頁碼不一 插圖
+ISBN 978-988-99456-0-2 : $38,000 (全套
+廿一冊)
+(2008-03583)"""
+        result = parse_Chinese_publication_entry(s)
+        for key in result:
+            print(key, '=', result[key], '\n')
+
+        import sys
+        sys.exit()
+
     for this_year in range(2008, 2014+1):
         for this_season in (1, 2, 3, 4):
             try:
@@ -549,22 +600,11 @@ if __name__ == '__main__':
                 except ValueError:
                     pass
 
-            if DEBUG:
-                print('upper=', upper)
-                print('lower=', lower)
-
-            if DEBUG:
-                # lower = 1
-                # upper = 2818
-                pass
-
             begin, end = 0, 0
             for rank in range(lower, upper + 1):
                 print('Parsing year', this_year, 'season', this_season, 'ID', rank)
                 begin = txt.find(str(rank) + '\n', end)
                 end = txt.find(str(rank + 1) + '\n', begin)
-                if DEBUG:
-                    print('begin, end=',begin, end)
                 offset = len(str(rank))
                 entry_in_txt = txt[begin+1 + offset:end]
 
@@ -580,9 +620,6 @@ if __name__ == '__main__':
                         raise error
 
             prefix = ''
-            if DEBUG:
-                import random
-                prefix = 'debug' + str(random.randint(1, 1000)) + '_'
 
     with open('output.csv', 'w', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, dialect='excel', fieldnames=record_fieldnames)
