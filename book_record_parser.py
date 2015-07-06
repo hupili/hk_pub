@@ -610,4 +610,3 @@ if __name__ == '__main__':
         for record in records:
             writer.writerow(record)
     print('Done.')
-
