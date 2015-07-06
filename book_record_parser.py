@@ -560,24 +560,6 @@ if __name__ == '__main__':
 
     records = []
 
-    if DEBUG:
-        this_year = 2009
-        this_season = 4
-        s = """
-良友合訂本. 第2冊. 第十三期至二十四期
-(1927-28)
-2007 香港 良友圖書有限公司
-38 厘米 頁碼不一 插圖
-ISBN 978-988-99456-0-2 : $38,000 (全套
-廿一冊)
-(2008-03583)"""
-        result = parse_Chinese_publication_entry(s)
-        for key in result:
-            print(key, '=', result[key], '\n')
-
-        import sys
-        sys.exit()
-
     for this_year in range(2008, 2014+1):
         for this_season in (1, 2, 3, 4):
             try:
