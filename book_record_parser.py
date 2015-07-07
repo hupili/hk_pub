@@ -455,7 +455,7 @@ def parse_English_publication_entry(entry):
         reminder = segs[2][segs[2].find(ISBN_marker):]
         for id_position in range(0, len(reminder)):
             try:
-                if (segs[2][id_position] == '(') and (reminder[id_position+1:id_position+5].isdigit()):
+                if (reminder[id_position] == '(') and (reminder[id_position+1:id_position+5].isdigit()):
                     break
             except KeyError:
                 continue
@@ -557,6 +557,25 @@ def parse_publication_entry(entry):
     return result
 
 if __name__ == '__main__':
+
+    if DEBUG:
+        this_year = 2008
+        this_season = 1
+
+        s = """ARCHITECTURE. 1 = 建築智慧. 1 — Hong
+Kong : PSI-Elite Education Limited, 2008.
+— 12 plates : col. ill. ; 28 cm.
+(Encyclopedic knowledge - anthropology)
+Text in Chinese and English
+ISBN 978-988-17316-2-3 : $238.00
+(2008-01533)"""
+
+        result = parse_English_publication_entry(s)
+        for key in result:
+            print(key, '=', result[key])
+        import sys
+        sys.exit(0)
+
 
     records = []
 
