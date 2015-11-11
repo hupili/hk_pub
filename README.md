@@ -8,4 +8,4 @@ Project detail: https://docs.google.com/document/d/1KCJsrouXOyCcmLT6AkH4yU64uHrp
 python book_record_parser.py
 ```
 
-This script reads files in directory 'txt' and then outputs 'output.csv'.
+This script parses txt files in directory 'txt' to 'output.csv'.
